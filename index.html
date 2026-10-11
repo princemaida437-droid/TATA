@@ -452,8 +452,6 @@ const ADMIN_FB_CONFIG={
   appId:"1:92396030809:web:b5e380494d1c9a0cce1a48",
   measurementId:"G-6Z1E5BKYMF"
 };
-window.addEventListener("error",e=>{if(location.search.includes("debug"))try{show("JS ERROR: "+(e.message||"")+" @"+(e.lineno||""),9000)}catch(_){}});
-window.addEventListener("unhandledrejection",e=>{if(location.search.includes("debug"))try{show("PROMISE ERROR: "+((e.reason&&(e.reason.message||e.reason))||""),9000)}catch(_){}});
 const firebaseReady=(async()=>{
   const V="10.12.2",B="https://www.gstatic.com/firebasejs/"+V+"/";
   const [{initializeApp},{getAuth,setPersistence,browserLocalPersistence,signInWithEmailAndPassword,signOut},{getFirestore,doc,setDoc,getDoc,onSnapshot,getDocs,collection},{getStorage,ref:storageRef,uploadBytes,getDownloadURL},{getFunctions,httpsCallable}]=await Promise.all([
@@ -564,8 +562,7 @@ async function uploadAdminImage(dataUrl,path){
     const F=await firebaseReady;
     const blob=await dataUrlBlob(dataUrl);
     const fileRef=F.storageRef(F.storage,path);
-    await F.uploadBytes(fileRef,blob,{contentType:blob.type||"image/jpeg"});
-    return await F.getDownloadURL(fileRef);
+    return await withTimeout(F.uploadBytes(fileRef,blob,{contentType:blob.type||"image/jpeg"}).then(()=>F.getDownloadURL(fileRef)),8000);
   }catch(e){console.warn("Storage upload failed, saving image inline",e);return dataUrl}
 }
 async function persist(){
@@ -579,10 +576,11 @@ async function persist(){
       return out;
     }));
     PLANS=plans;
-    const cleanPlans=JSON.parse(JSON.stringify({plans:PLANS,updatedAt:Date.now()}));
-    await F.setDoc(F.doc(F.db,"admin","config"),cleanPlans,{merge:true});
-    const verify=await F.getDoc(F.doc(F.db,"admin","config"));
-    if(verify.exists()&&Array.isArray(verify.data().plans)){cacheAdmin();ADMIN_REMOTE_LOADED=true;render();show("Saved to cloud ✓ (sab users ko dikhega)",2500)}else throw new Error("Save verification failed")
+    queueAdminPatch({plans:PLANS});
+    show("Firebase mein save ho raha hai...",15000);
+    try{await flushAdminPending();show("Saved to cloud ✓ (sab users ko dikhega)",6000)}
+    catch(err){show("Plans phone par save hue. Internet milte hi Firebase mein apne-aap chale jayenge",6000)}
+    cacheAdmin();ADMIN_REMOTE_LOADED=true;render()
   }catch(e){
     show("CLOUD SAVE FAIL: "+(e&&(e.code||e.message)||"error")+" — Firestore Rules check karo",6000);
     throw e;
@@ -611,6 +609,7 @@ function attachAdminSync(){
   }).catch(()=>{});
 }
 async function loadAdminData(){
+  flushAdminPending().catch(()=>{});
   try{
     const F=await firebaseReady;
     const snap=await F.getDoc(F.doc(F.db,"admin","config"));
@@ -624,10 +623,8 @@ async function loadAdminData(){
     }
     ADMIN_REMOTE_LOADED=true;
     render();
-    if(location.search.includes("debug"))show("DEBUG: Firebase="+(snap.exists()?"haan":"nahi")+" | plans="+PLANS.length+" | payment="+(PAYMENT.holder||"-")+" | share="+(SHAREQR.url?"link ✓":"link nahi"),6000);
   }catch(e){
     console.warn("Firebase admin data load failed",e);
-    if(location.search.includes("debug"))show("DEBUG ERROR: "+(e.code||e.message||e),6000);
     if(_adminTry++<5)setTimeout(loadAdminData,2000);
     else{ADMIN_REMOTE_LOADED=true;render()}
   }
@@ -660,6 +657,7 @@ aBody.addEventListener("input",e=>{const k=e.target.dataset.pay; if(k!==undefine
 aBody.addEventListener("click",async e=>{const t=e.target.closest("button"); if(!t)return;
   if(t.dataset.savepay){savePay().catch(()=>{});return}
   if(t.dataset.saveqr){saveShareQR().catch(()=>{});return}
+  if(t.dataset.flush){flushAdminPending().then(()=>{show("Firebase mein save ho gaya ✓",6000);renderAdmin()}).catch(err=>{show("Abhi nahin gaya: "+(err.message||err),8000);renderAdmin()});return}
   if(t.dataset.wdreload){loadWithdrawals();return}
   if(t.dataset.wdpaid){try{const F=await firebaseReady;await F.setDoc(F.doc(F.db,"withdrawals",t.dataset.wdpaid),{status:"PAID",paidAt:Date.now()},{merge:true});show("Paid mark ho gaya");loadWithdrawals()}catch(err){show("Update nahi hua, rules check karein")}}
 });
@@ -705,7 +703,7 @@ function renderAdmin(){
     <div class="meta"><b>${esc(p.name)}</b><span>₹${esc(p.price)} · Daily ₹${esc(p.daily)} · ${esc(p.day)} day · Total ₹${esc(p.total)}</span></div>
     <div class="ops"><button class="btn light" data-edit="${i}">Edit</button><button class="btn del" data-del="${i}">Delete</button></div>
   </div>`).join(""):'<p style="text-align:center;color:#777;padding:20px 0">No plans uploaded yet.</p>';
-  aBody.innerHTML=form+paySettings+paySection()+wdSection()+`<div class="ptitle" style="margin-top:16px">Uploaded plans (${PLANS.length})</div>`+list+`<button class="resetlink" data-act="reset">Reset to default plans</button>`;
+  aBody.innerHTML=statusBox()+form+paySettings+wdSection()+`<div class="ptitle" style="margin-top:16px">Uploaded plans (${PLANS.length})</div>`+list+`<button class="resetlink" data-act="reset">Reset to default plans</button>`;
 }
 function openAdmin(){f=clone(EMPTY);editIdx=-1;renderAdmin();loadWithdrawals();admin.classList.add("open");admin.scrollTop=0}
 function closeAdmin(){admin.classList.remove("open")}
@@ -721,7 +719,7 @@ aBody.addEventListener("click",e=>{
     if(!String(f.name).trim()||f.price===""){show("Plan name and price are required");return}
     const p={...f,price:Number(f.price),daily:Number(f.daily)||0,day:Number(f.day)||0,total:Number(f.total)||0};
     if(editIdx>=0){PLANS[editIdx]=p;show("Plan updated")}else{PLANS.push(p);show("Plan uploaded")}
-    f=clone(EMPTY);editIdx=-1;renderAdmin();
+    f=clone(EMPTY);editIdx=-1;renderAdmin();render();
     persist().catch(()=>{});
   }
   if(act==="reset"&&confirm("Reset all plans to default?")){PLANS=clone(DEFAULTS);f=clone(EMPTY);editIdx=-1;renderAdmin();persist().catch(()=>{})}
@@ -775,18 +773,34 @@ function pickQRImage(){
   };
   inp.click();
 }
-async function adminCloudWrite(data,label){
+function withTimeout(pr,ms){return Promise.race([pr,new Promise((_,rej)=>setTimeout(()=>rej(new Error("Firebase se 15 second mein jawab nahin mila. Internet check karein aur dobara koshish karein")),ms))])}
+const PENDING_KEY="bullet_admin_pending_v1";
+function getPending(){try{return JSON.parse(localStorage.getItem(PENDING_KEY)||"{}")}catch(e){return {}}}
+function setPending(o){try{localStorage.setItem(PENDING_KEY,JSON.stringify(o))}catch(e){}}
+function queueAdminPatch(patch){setPending({...getPending(),...JSON.parse(JSON.stringify(patch)),_t:Date.now()})}
+async function flushAdminPending(){
+  const pend=getPending();
+  const keys=Object.keys(pend).filter(k=>k!=="_t");
+  if(!keys.length)return true;
   const F=await firebaseReady;
+  const data={};keys.forEach(k=>data[k]=pend[k]);
+  await withTimeout(F.setDoc(F.doc(F.db,"admin","config"),data,{merge:true}),15000);
+  setPending({});
+  return true;
+}
+function statusBox(){
+  const p=getPending();const n=Object.keys(p).filter(k=>k!=="_t").length;
+  return `<div class="psec" style="margin-bottom:10px"><b>Firebase status:</b> ${n?`<span style="color:#c0392b">${n} item Firebase mein abhi nahin gaye</span>`:`<span style="color:#096d26">sab Firebase mein hai ✓</span>`} <button class="btn light" data-flush="1" style="margin-left:6px">Firebase par bhejo</button></div>`;
+}
+async function adminCloudWrite(data,label){
+  queueAdminPatch(data);
   try{
-    const clean=JSON.parse(JSON.stringify(data));
-    await F.setDoc(F.doc(F.db,"admin","config"),clean,{merge:true});
-    const v=await F.getDoc(F.doc(F.db,"admin","config"));
-    if(!v.exists())throw new Error("verify failed");
+    await flushAdminPending();
     cacheAdmin();
-    show(label+" cloud par save ho gaya (sab users ko dikhega)",2500);
+    show(label+" cloud par save ho gaya (sab users ko dikhega)",6000);
   }catch(e){
-    show("CLOUD SAVE FAIL ("+label+"): "+(e&&(e.code||e.message)||"error")+" — admin number se login karo",6000);
-    throw e;
+    cacheAdmin();
+    show(label+" phone par save hua. Internet milte hi Firebase mein apne-aap chala jayega",6000);
   }
 }
 async function savePay(){
