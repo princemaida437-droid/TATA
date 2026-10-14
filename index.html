@@ -899,6 +899,8 @@ async function loadUser(ph){
   let o;
   try{o=JSON.parse(localStorage.getItem(SK))}catch(e){}
   S=Object.assign(BLANK(),o||{});
+  // Balance, income aur plans browser ke purane data se nahin, sirf Firebase se aayenge
+  {const B0=BLANK();S.bal=B0.bal;S.inc=B0.inc;S.plans=B0.plans;}
   
   // Then fetch from Firebase (latest data from server)
   try{
