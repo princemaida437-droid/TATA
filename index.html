@@ -246,6 +246,26 @@ nav a.on::before{content:"";position:absolute;top:-17px;width:51px;height:51px;b
 .pfield{margin-bottom:10px}
 .pfield label{display:block;font-size:11px;color:#666;margin-bottom:3px}
 .pfield input{width:100%;border:1px solid #dfe3ea;border-radius:7px;padding:8px 9px;font-size:14px;background:#fafbff;color:#222}
+.allp{position:fixed;inset:0;z-index:55;background:#efefef;max-width:430px;margin:0 auto;overflow-y:auto;display:none;padding-bottom:20px}
+.allp.open{display:block}
+.aphead{background:#0a7a1f;color:#fff;display:flex;align-items:center;justify-content:center;position:relative;height:60px;font-size:20px;font-weight:700;padding-top:env(safe-area-inset-top,0px);box-sizing:content-box}
+.aphead button{position:absolute;top:50%;transform:translateY(-50%);background:none;border:0;color:#fff;padding:6px;cursor:pointer}
+.aphead .apback{left:10px;font-size:30px;line-height:1}
+.aphead .apref{right:12px;font-size:22px;line-height:1}
+.aptabs{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 14px 4px}
+.aptab{border:0;border-radius:26px;background:#fff;color:#0a7a1f;font-size:16px;padding:12px 0;cursor:pointer}
+.aptab.on{background:#0a7a1f;color:#fff}
+.aplist{padding:10px 14px}
+.apcard{background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:12px;cursor:pointer}
+.apr{display:flex;align-items:center;gap:10px;color:#777;font-size:16px;padding:4px 0;flex-wrap:wrap}
+.apr b{color:#333;font-weight:600;word-break:break-all}
+.apic{color:#888;font-size:16px}
+.apfoot{border-top:1px solid #e6e6e6;margin-top:10px;padding-top:12px;justify-content:space-between}
+.apv{color:#777;font-size:16px}
+.apd{color:#777;font-size:15px;white-space:nowrap}
+.apdet{background:#f5f7f5;border-radius:8px;padding:10px;margin-top:10px;display:grid;gap:4px;font-size:14px;color:#444}
+.apdet[hidden]{display:none}
+.apempty{text-align:center;color:#aaa;padding:60px 0;font-size:16px}
 </style>
 </head>
 <body>
@@ -349,6 +369,21 @@ nav a.on::before{content:"";position:absolute;top:-17px;width:51px;height:51px;b
     <button class="mitem admin-btn" id="adminBtn"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6z"/></svg>please do not open<span class="go">&#8250;</span></button>
   </div>
 </div>
+<div class="allp" id="allp">
+  <div class="aphead">
+    <button class="apback" data-back aria-label="Back">&#8249;</button>
+    All Details
+    <button class="apref" data-refresh aria-label="Refresh">&#8635;</button>
+  </div>
+  <div class="aptabs">
+    <button class="aptab on" data-t="all">🔍 All</button>
+    <button class="aptab" data-t="recharge">🔍 Recharge</button>
+    <button class="aptab" data-t="withdraw">🔍 Withdrawal</button>
+    <button class="aptab" data-t="refer">🔍 Referral</button>
+  </div>
+  <div style="padding:8px 14px 0"><input id="apQ" type="search" placeholder="🔍 इस tab में खोजें: नंबर, UID या रकम" style="width:100%;padding:12px;border-radius:10px;border:1px solid #ccc;font-size:16px;box-sizing:border-box"></div>
+  <div class="aplist" id="apList"></div>
+</div>
 <div class="admin" id="admin">
   <div class="ahead"><button id="aBack" aria-label="Back">&#8592;</button>Admin Panel</div>
   <div class="abody" id="aBody"></div>
@@ -440,7 +475,7 @@ const SHAREKEY="bullet_share_qr_v1";
 let SHAREQR={qr:"",url:"",baseUrl:"https://qcrm.johndeere009.com/?code=",refCode:"a3c97e87"};
 let ADMIN_REMOTE_LOADED=false;
 // Update global REF variables from SHAREQR
-let REF_CODE=SHAREQR.refCode,REF_LINK=SHAREQR.baseUrl+SHAREQR.refCode;
+let REF_CODE=myRefCode(),REF_LINK=myRefLink();
 /* ===== Firebase for Admin data (main page) + local backup ===== */
 const ADMIN_FB_CONFIG={
   apiKey:"AIzaSyAkIE-qMxl9zWJy7s2A89Mlv_2Y_wAj6Ys",
@@ -452,6 +487,7 @@ const ADMIN_FB_CONFIG={
   appId:"1:92396030809:web:b5e380494d1c9a0cce1a48",
   measurementId:"G-6Z1E5BKYMF"
 };
+(function(){try{const r=new URLSearchParams(location.search).get("ref");if(r)localStorage.setItem("bullet_ref",r.slice(0,20))}catch(e){}})();
 const firebaseReady=(async()=>{
   const V="10.12.2",B="https://www.gstatic.com/firebasejs/"+V+"/";
   const [{initializeApp},{getAuth,setPersistence,browserLocalPersistence,signInWithEmailAndPassword,signOut},{getFirestore,doc,setDoc,getDoc,onSnapshot,getDocs,collection},{getStorage,ref:storageRef,uploadBytes,getDownloadURL},{getFunctions,httpsCallable}]=await Promise.all([
@@ -468,7 +504,7 @@ function cacheAdmin(){try{localStorage.setItem(ACACHE,JSON.stringify({plans:PLAN
   if(Array.isArray(d.plans)&&d.plans.length)PLANS=d.plans;
   if(d.payment)PAYMENT={...PAYMENT,...d.payment};
   if(d.shareQR)SHAREQR={...SHAREQR,...d.shareQR};
-  REF_CODE=SHAREQR.refCode;REF_LINK=SHAREQR.baseUrl+SHAREQR.refCode;
+  REF_CODE=myRefCode();REF_LINK=myRefLink();
 }catch(e){}})();
 const esc=t=>String(t).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
 
@@ -618,7 +654,7 @@ async function loadAdminData(){
       if(Array.isArray(d.plans)&&d.plans.length>0)PLANS=d.plans;
       if(d.payment)PAYMENT={...PAYMENT,...d.payment};
       if(d.shareQR)SHAREQR={...SHAREQR,...d.shareQR};
-      REF_CODE=SHAREQR.refCode;REF_LINK=SHAREQR.baseUrl+SHAREQR.refCode;
+      REF_CODE=myRefCode();REF_LINK=myRefLink();
       cacheAdmin();qrDone=false;
     }
     ADMIN_REMOTE_LOADED=true;
@@ -638,7 +674,168 @@ function paySection(){
   const inputs=fields.map(([k,l])=>`<div class="f"><label>${l}</label><input data-pay="${k}" type="text" value="${esc(PAYMENT[k]||"")}"></div>`).join("");
   return `<div class="ptitle" style="margin-top:16px">Payment details (sab users ko dikhenge)</div><div class="psec">${inputs}<button class="btn" data-savepay="1" style="width:100%;padding:11px;margin-top:8px">💾 Save Payment Details</button></div>`;
 }
-let WD_LIST=[],BANK_LIST=[];
+let WD_LIST=[],BANK_LIST=[],ALL_VIEW=false;
+function allDetails(){
+  const seen=new Set(),rows=[];
+  const add=(u,n,src)=>{const k=(u||"")+"|"+(n||"");if(!u&&!n)return;if(seen.has(k))return;seen.add(k);rows.push({u,n,src})};
+  BANK_LIST.forEach(b=>{if(Array.isArray(b.list)&&b.list.length)b.list.forEach(x=>add(x.upi,x.phone,b.uid||b.id));else add(b.upi,b.phone,b.uid||b.id)});
+  WD_LIST.forEach(w=>add(w.upi,w.phone,w.uid));
+  const h=rows.length?rows.map((r,i)=>`<div class="litem"><div class="meta"><b>${i+1}. UPI ID: ${esc(r.u||"-")}</b><span>UPI Number: ${esc(r.n||"-")}</span><span>User: ${esc(String(r.src||"-").slice(0,8))}</span></div></div>`).join(""):'<p style="color:#777;padding:10px 0">Koi detail nahi.</p>';
+  return `<button class="btn light" data-allback="1" style="width:100%;margin-bottom:10px">&#8592; Back</button><div class="ptitle">All details - UPI ID & number (${rows.length})</div>${h}<button class="btn light" data-wdreload="1" style="width:100%;margin-top:8px">Refresh</button>`;
+}
+let USERS_LIST=[];
+async function loadUsers(){
+  USERS_ERR="";
+  try{
+    const F=await firebaseReady;
+    const s=await F.getDocs(F.collection(F.db,"users"));
+    USERS_LIST=s.docs.map(d=>({uid:d.id,...d.data()})).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+    try{
+      const ps=await F.getDocs(F.collection(F.db,"payments"));
+      PAY_ALL=ps.docs.map(d=>({id:d.id,...d.data()}));
+      const PAY=PAY_ALL.filter(p=>p.status==="SUCCESS");
+      USERS_LIST.forEach(u=>{
+        const mine=PAY.filter(p=>p.uid===u.uid).map(p=>({amount:Number(p.amount)||0,method:"Cashfree",status:"SUCCESS",timestamp:p.paidAt||p.createdAt||0,orderId:p.id}));
+        if(mine.length)u.rechargeHistory=mine;
+      });
+    }catch(e){console.warn("payments load failed",e)}
+  }catch(e){console.warn("users load failed",e);USERS_ERR=(e&&(e.code||e.message))||"unknown";show("Users list load nahi hui (Firestore rules check karein)",6000)}
+}
+let AP_TAB="all";
+let USERS_ERR="";
+function apPhone(uid,fb){const u=USERS_LIST.find(x=>x.uid===uid);const p=(u&&u.phone)||"";return String(p).replace(/\D/g,"").slice(-10)||"-"}
+function apStats(uid){
+  const u=USERS_LIST.find(x=>x.uid===uid)||{};
+  const rh=u.rechargeHistory||[];
+  const rTot=rh.reduce((s,h)=>s+Number(h.amount||0),0);
+  const ws=WD_LIST.filter(w=>w.uid===uid);
+  const paid=ws.filter(w=>w.status==="PAID").reduce((s,w)=>s+Number(w.amount||0),0);
+  const pend=ws.filter(w=>w.status!=="PAID").reduce((s,w)=>s+Number(w.amount||0),0);
+  return ["Referral: "+refChildren(uid).length,
+    "Total recharge: "+inr(rTot)+" ("+rh.length+" times)",
+    "Total withdraw requested: "+inr(paid+pend),
+    "Withdraw paid: "+inr(paid),
+    "Withdraw pending: "+inr(pend),
+    "Current balance: "+inr(u.balance||0)];
+}
+let PAY_ALL=[];
+window.MY_UID="";
+function myRefCode(){return window.MY_UID?window.MY_UID.slice(0,8):""}
+function myRefLink(){return location.origin+location.pathname+"?ref="+myRefCode()}
+function getRefIn(){try{return localStorage.getItem("bullet_ref")||""}catch(e){return ""}}
+function refChildren(uid){const code=String(uid||"").slice(0,8);return USERS_LIST.filter(x=>x.referredBy&&x.referredBy===code&&x.uid!==uid)}
+function apFmt(v){
+  if(v===null||v===undefined)return "-";
+  if(typeof v==="number")return String(v);
+  if(typeof v==="string")return v;
+  if(typeof v==="boolean")return v?"haan":"nahi";
+  if(Array.isArray(v))return v.length+" items";
+  try{return JSON.stringify(v).slice(0,300)}catch(e){return String(v)}
+}
+function apAll(uid){
+  const u=USERS_LIST.find(x=>x.uid===uid)||{};
+  const L=["— User ka पूरा data —"];
+  Object.keys(u).sort().forEach(k=>{
+    if(k==="uid")return;
+    const v=u[k];
+    if(Array.isArray(v)){
+      L.push(k+": "+v.length+" entries");
+      v.forEach((it,i)=>{
+        if(it&&typeof it==="object")L.push("  "+k+" #"+(i+1)+": "+Object.keys(it).map(kk=>kk+"="+apFmt(it[kk])).join(", "));
+        else L.push("  "+k+" #"+(i+1)+": "+apFmt(it));
+      });
+    } else L.push(k+": "+apFmt(v));
+  });
+  L.push("— Payments (Cashfree, सभी status) —");
+  const pays=PAY_ALL.filter(p=>p.uid===uid).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  if(!pays.length)L.push("कोई payment नहीं");
+  pays.forEach(p=>L.push("Order "+p.id+": ₹"+(p.amount||0)+" · "+(p.status||"-")+" · "+(p.createdAt?dt(p.createdAt):"-")+(p.paidAt?" · paid "+dt(p.paidAt):"")));
+  L.push("— Withdraw requests —");
+  const wds=WD_LIST.filter(w=>w.uid===uid).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  if(!wds.length)L.push("कोई withdraw नहीं");
+  wds.forEach(w=>L.push("₹"+(w.amount||0)+" · "+(w.status||"PENDING")+" · UPI "+(w.upi||"-")+" · "+(w.createdAt?dt(w.createdAt):"-")));
+  return L;
+}
+function apHistory(uid){
+  const u=USERS_LIST.find(x=>x.uid===uid)||{};
+  const rh=(u.rechargeHistory||[]).map(h=>({t:Number(h.timestamp)||0,s:"Recharge: "+inr(h.amount||0)+" · "+(h.status||"SUCCESS")+" · "+(h.timestamp?dt(h.timestamp):"-")}));
+  const wd=WD_LIST.filter(w=>w.uid===uid).map(w=>({t:Number(w.createdAt)||0,s:"Withdraw: "+inr(w.amount||0)+" · "+(w.status||"PENDING")+" · UPI "+(w.upi||"-")+" · "+(w.createdAt?dt(w.createdAt):"-")}));
+  const all=rh.concat(wd).sort((a,b)=>b.t-a.t).map(x=>x.s);
+  return ["— पूरा इतिहास —"].concat(all.length?all:["कोई recharge या withdraw नहीं"]);
+}
+let AP_Q={};let AP_LAST="";
+function apSummary(uid){
+  const wd=WD_LIST.filter(w=>w.uid===uid);
+  const rc=PAY_ALL.filter(p=>p.uid===uid&&p.status==="SUCCESS");
+  const sum=a=>a.reduce((x,y)=>x+(Number(y.amount)||0),0);
+  return ["— सारांश —",
+    "Recharge (SUCCESS): ₹"+sum(rc)+" ("+rc.length+" baar)",
+    "Withdraw request: ₹"+sum(wd)+" ("+wd.length+" baar)",
+    "Withdraw PAID: ₹"+sum(wd.filter(w=>w.status==="PAID")),
+    "Withdraw PENDING: ₹"+sum(wd.filter(w=>w.status!=="PAID")),
+    "Referral: "+refChildren(uid).length+" log"];
+}
+function apRows(){
+  const latest=(arr,f)=>arr.reduce((m,x)=>Math.max(m,Number(f(x))||0),0);
+  if(AP_TAB==="refer"){
+    return USERS_LIST.filter(u=>refChildren(u.uid).length>0).map(u=>{
+      const kids=refChildren(u.uid);
+      return {phone:apPhone(u.uid),date:latest(kids,k=>k.createdAt),
+        detail:apSummary(u.uid).concat(["Referred users: "+kids.map(k=>apPhone(k.uid)).join(", ")],apAll(u.uid))};
+    }).sort((a,b)=>b.date-a.date);
+  }
+  if(AP_TAB==="recharge"){
+    const uids=[...new Set(PAY_ALL.filter(p=>p.status==="SUCCESS").map(p=>p.uid))];
+    return uids.map(uid=>{
+      const rc=PAY_ALL.filter(p=>p.uid===uid&&p.status==="SUCCESS");
+      return {phone:apPhone(uid),date:latest(rc,p=>p.paidAt||p.createdAt),
+        detail:apSummary(uid).concat(apAll(uid))};
+    }).sort((a,b)=>b.date-a.date);
+  }
+  if(AP_TAB==="withdraw"){
+    const uids=[...new Set(WD_LIST.map(w=>w.uid))];
+    return uids.map(uid=>{
+      const wd=WD_LIST.filter(w=>w.uid===uid);
+      return {phone:apPhone(uid),date:latest(wd,w=>w.createdAt),
+        detail:apSummary(uid).concat(apAll(uid))};
+    }).sort((a,b)=>b.date-a.date);
+  }
+  return USERS_LIST.map(u=>({phone:apPhone(u.uid),date:u.createdAt||0,
+    detail:apSummary(u.uid).concat(apAll(u.uid))})).sort((a,b)=>b.date-a.date);
+}
+function apRender(){
+  const aq=document.getElementById("apQ");
+  if(aq&&AP_LAST!==AP_TAB){AP_LAST=AP_TAB;aq.value=AP_Q[AP_TAB]||""}
+  const q=(AP_Q[AP_TAB]||"").trim().toLowerCase();
+  const rows=apRows().filter(r=>!q||String(r.phone||"").toLowerCase().includes(q)||r.detail.join(" ").toLowerCase().includes(q));
+  document.querySelectorAll("#allp .aptab").forEach(b=>b.classList.toggle("on",b.dataset.t===AP_TAB));
+  if(!rows.length&&USERS_ERR){document.getElementById("apList").innerHTML='<div class="apempty">Data load nahi hua.<br><small>Reason: '+esc(USERS_ERR)+'</small><br>Firebase Firestore rules check karein (admin ko users/withdrawals padhne ki permission chahiye).</div>';return}
+  document.getElementById("apList").innerHTML=rows.length?rows.map(r=>`<div class="apcard">
+    <div class="apr"><span class="apic">&#9733;</span>Mobile Number: <b>${esc(r.phone||"-")}</b></div>
+    <div class="apdet">${r.detail.map(x=>`<span>${esc(x)}</span>`).join("")}</div>
+    <div class="apr apfoot"><span class="apv">&#128065; View Details</span><span class="apd">${r.date?dt(r.date):"-"}</span></div>
+  </div>`).join(""):'<div class="apempty">Koi record nahi mila.</div>';
+}
+async function apLoad(){
+  await Promise.all([loadUsers(),loadWithdrawals()]);
+  apRender();
+}
+function openAllPage(){
+  AP_TAB="all";
+  apRender();
+  document.getElementById("allp").classList.add("open");
+  apLoad();
+}
+document.getElementById("allp").addEventListener("input",e=>{if(e.target.id==="apQ"){AP_Q[AP_TAB]=e.target.value;apRender()}});
+document.getElementById("allp").addEventListener("click",e=>{
+  const page=document.getElementById("allp");
+  if(e.target.closest("[data-back]")){page.classList.remove("open");return}
+  if(e.target.closest("[data-refresh]")){apLoad();return}
+  const tab=e.target.closest(".aptab");
+  if(tab){AP_TAB=tab.dataset.t;apRender();return}
+  const card=e.target.closest(".apcard");
+  if(card){const d=card.querySelector(".apdet");d.hidden=!d.hidden}
+});
 async function loadWithdrawals(){
   try{const F=await firebaseReady;
     const w=await F.getDocs(F.collection(F.db,"withdrawals"));
@@ -658,6 +855,8 @@ aBody.addEventListener("click",async e=>{const t=e.target.closest("button"); if(
   if(t.dataset.savepay){savePay().catch(()=>{});return}
   if(t.dataset.saveqr){saveShareQR().catch(()=>{});return}
   if(t.dataset.flush){flushAdminPending().then(()=>{show("Firebase mein save ho gaya ✓",6000);renderAdmin()}).catch(err=>{show("Abhi nahin gaya: "+(err.message||err),8000);renderAdmin()});return}
+  if(t.dataset.alld){openAllPage();return}
+  if(t.dataset.allback){ALL_VIEW=false;renderAdmin();admin.scrollTop=0;return}
   if(t.dataset.wdreload){loadWithdrawals();return}
   if(t.dataset.wdpaid){try{const F=await firebaseReady;await F.setDoc(F.doc(F.db,"withdrawals",t.dataset.wdpaid),{status:"PAID",paidAt:Date.now()},{merge:true});show("Paid mark ho gaya");loadWithdrawals()}catch(err){show("Update nahi hua, rules check karein")}}
 });
@@ -703,9 +902,9 @@ function renderAdmin(){
     <div class="meta"><b>${esc(p.name)}</b><span>₹${esc(p.price)} · Daily ₹${esc(p.daily)} · ${esc(p.day)} day · Total ₹${esc(p.total)}</span></div>
     <div class="ops"><button class="btn light" data-edit="${i}">Edit</button><button class="btn del" data-del="${i}">Delete</button></div>
   </div>`).join(""):'<p style="text-align:center;color:#777;padding:20px 0">No plans uploaded yet.</p>';
-  aBody.innerHTML=statusBox()+form+paySettings+wdSection()+`<div class="ptitle" style="margin-top:16px">Uploaded plans (${PLANS.length})</div>`+list+`<button class="resetlink" data-act="reset">Reset to default plans</button>`;
+  aBody.innerHTML=ALL_VIEW?allDetails():`<button class="btn" data-alld="1" style="width:100%;margin-bottom:10px">All details</button>`+statusBox()+form+paySettings+wdSection()+`<div class="ptitle" style="margin-top:16px">Uploaded plans (${PLANS.length})</div>`+list+`<button class="resetlink" data-act="reset">Reset to default plans</button>`;
 }
-function openAdmin(){f=clone(EMPTY);editIdx=-1;renderAdmin();loadWithdrawals();admin.classList.add("open");admin.scrollTop=0}
+function openAdmin(){ALL_VIEW=false;f=clone(EMPTY);editIdx=-1;renderAdmin();loadWithdrawals();admin.classList.add("open");admin.scrollTop=0}
 function closeAdmin(){admin.classList.remove("open")}
 
 aBody.addEventListener("input",e=>{const t=e.target; if(t.dataset.k!==undefined)f[t.dataset.k]=t.value});
@@ -836,7 +1035,7 @@ async function saveShareQR(){
     catch(e){console.warn("QR storage upload failed, Firestore mein seedha save",e)}
   }
   await adminCloudWrite({shareQR:share,updatedAt:Date.now()},"Share link");
-  REF_CODE=SHAREQR.refCode;REF_LINK=SHAREQR.baseUrl+SHAREQR.refCode;
+  REF_CODE=myRefCode();REF_LINK=myRefLink();
 }
 document.getElementById("aBack").onclick=closeAdmin;
 // Admin panel password protection
@@ -909,6 +1108,7 @@ async function loadUser(ph){
     let cu=F.auth.currentUser;
     for(let i=0;i<50&&!cu;i++){await new Promise(r=>setTimeout(r,100));cu=F.auth.currentUser}
     if(cu && String(cu.email||"").startsWith("u"+ph+"@")){
+      window.MY_UID=cu.uid;
       await ensureUserDoc(ph);
       attachAdminSync();
       const userDoc=await F.getDoc(F.doc(F.db,"users",cu.uid));
@@ -1252,14 +1452,19 @@ async function saveBank(){const u=wUpi.value.trim();const p=(document.getElement
   if(!/^[6-9]\d{9}$/.test(p))return show("Sahi 10 digit mobile number daalein");
   try{const F=await firebaseReady;const uid=F.auth.currentUser?F.auth.currentUser.uid:null;
     if(!uid)return show("Pehle login karein");
-    await F.setDoc(F.doc(F.db,"bank_details",uid),{uid,upi:u,phone:p,updatedAt:Date.now()},{merge:true});
+    const old=(S.banks&&S.banks.length)?S.banks.slice():(S.bank?[S.bank]:[]);
+    const list=old.filter(x=>!(x.u===u&&x.p===p));list.push({u,p});S.banks=list;
+    await F.setDoc(F.doc(F.db,"bank_details",uid),{uid,upi:u,phone:p,list:list.map(x=>({upi:x.u,phone:x.p||""})),updatedAt:Date.now()},{merge:true});
   }catch(e){console.warn("bank save failed",e);return show("UPI save nahi hui, dobara koshish karein")}
   S.bank={u,p};save();wp.classList.remove("open");show("UPI ID aur number save ho gaya");openWithdraw()}
+function openAddUpi(){wp.querySelectorAll("input").forEach(i=>i.value="");wp.classList.add("open");wp.querySelector(".rbody").scrollTop=0;wp.scrollTop=0}
 function openWithdraw(){const b=S.bank;
+  const _L=(S.banks&&S.banks.length)?S.banks:[b];
+  const _saved=_L.length>1?_L.map((x,i)=>{const on=x.u===b.u&&x.p===b.p;return `<button class="sbtn${on?"":" o"}" data-go="pickupi" data-i="${i}">${esc(x.u)} · ${esc(x.p||"")}${on?" ✓":""}</button>`}).join(""):"";
   openSub("Withdraw",`<div class="sc"><small>Balance</small><span class="big">${inr(S.bal)}</span></div>
   <div class="sc"><small>UPI ID</small>${esc(b.u)}</div>
   <div class="sc">Amount (Min: ${inr(CFG.minWd)}, Max: ${inr(S.bal)})<input class="sin" id="wdAmt" type="number" inputmode="numeric" min="${CFG.minWd}" max="${S.bal}" placeholder="Enter withdrawal amount"></div>
-  <button class="sbtn" data-go="wd">Withdraw</button><button class="sbtn o" data-go="rebind">Change UPI ID</button>`)}
+  ${_saved}<button class="sbtn" data-go="wd">Withdraw</button><button class="sbtn o" data-go="addupi">+ Add another UPI ID & number</button><button class="sbtn o" data-go="rebind">Change UPI ID</button>`)}
 async function doWithdraw(){const a=Number(document.getElementById("wdAmt").value);
   if(!a||a<CFG.minWd)return show("Minimum withdraw "+inr(CFG.minWd));
   if(a>S.bal)return show("Balance kam hai");
@@ -1290,6 +1495,8 @@ function openMenu(t){
   else if(t==="Log out"){askConfirm("Log out karein?",()=>{try{if(BAL_UNSUB){BAL_UNSUB();BAL_UNSUB=null}}catch(e){}firebaseReady.then(F=>F.signOut(F.auth)).catch(()=>{});USER="";try{localStorage.removeItem("bullet_user")}catch(e){}S=BLANK();SK="";refresh();[mypage,teampage,sharepage,incpage].forEach(x=>x.classList.remove("open"));document.querySelectorAll("nav a").forEach((x,i)=>x.classList.toggle("on",i===0));showGate()})}}
 sub.addEventListener("click",e=>{const g=e.target.closest("[data-go]");if(!g)return;const k=g.dataset.go;
   if(k==="wd")doWithdraw();
+  else if(k==="addupi"){sub.classList.remove("open");openAddUpi()}
+  else if(k==="pickupi"){const x=(S.banks||[])[+g.dataset.i];if(x){S.bank=x;save();openWithdraw()}}
   else if(k==="rebind"){sub.classList.remove("open");S.bank=null;save();openWallet()}
   else if(k==="name"){S.name=document.getElementById("pName").value.trim();save();show("Saved")}
   else if(k==="lang"){S.lang=g.dataset.l;refresh();openMenu("Language")}});
@@ -1304,8 +1511,9 @@ async function ensureUserDoc(ph){
     if(!/^[6-9]\d{9}$/.test(d))return;
     const ref=F.doc(F.db,"users",u.uid);
     const snap=await F.getDoc(ref);
-    if(snap.exists()){ if(!snap.data().phone) await F.setDoc(ref,{phone:d},{merge:true}); }
-    else await F.setDoc(ref,{phone:d,balance:0,createdAt:Date.now()});
+    if(snap.exists()){ if(!snap.data().phone) await F.setDoc(ref,{phone:d},{merge:true});
+      if(!snap.data().referredBy&&getRefIn()&&getRefIn()!==u.uid.slice(0,8)) await F.setDoc(ref,{referredBy:getRefIn()},{merge:true}); }
+    else await F.setDoc(ref,{phone:d,balance:0,createdAt:Date.now(),referredBy:(getRefIn()&&getRefIn()!==u.uid.slice(0,8))?getRefIn():""});
   }catch(e){console.warn("ensureUserDoc failed",e)}
 }
 window.bulletLogin=(ph,pw)=>{bulletSetLast(ph);_adminTry=0;(pw?mainSignIn(ph,pw):Promise.resolve()).then(()=>{ensureUserDoc(ph);loadAdminData()});setTimeout(loadAdminData,3000);USER=ph;try{localStorage.setItem("bullet_user",ph)}catch(e){}loadUser(ph);gate.style.display="none";gate.srcdoc="";document.querySelector(".main-content").classList.add("show")};
@@ -1519,6 +1727,7 @@ function firebaseMsg(err){
   return err&&err.message ? err.message.replace('Firebase: ','').replace(/\s*\([^)]*\)\.?$/,'') : 'Something went wrong. Please try again.';
 }
 
+(function(){try{const r=new URLSearchParams(location.search).get("ref");if(r)localStorage.setItem("bullet_ref",r.slice(0,20))}catch(e){}})();
 const firebaseReady=(async()=>{
   const [{initializeApp},{getAuth,setPersistence,browserLocalPersistence,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged},{getFirestore,doc,setDoc,getDoc},{getStorage,ref:storageRef,uploadBytes,getDownloadURL}]=await Promise.all([
     import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js'),
