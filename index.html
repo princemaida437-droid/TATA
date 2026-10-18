@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>TATA – Plans v3</title>
+<title>TATA – Plans v5</title>
 <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
 <style>
 :root{--green:#046b2a;--green-dark:#04561f;--bg:#efefef;--card:#fff;--chip:#f3f5fb;--text:#222;box-sizing:border-box}
@@ -380,6 +380,7 @@ nav a.on::before{content:"";position:absolute;top:-17px;width:51px;height:51px;b
     <button class="aptab" data-t="recharge">🔍 Recharge</button>
     <button class="aptab" data-t="withdraw">🔍 Withdrawal</button>
     <button class="aptab" data-t="refer">🔍 Referral</button>
+    <button class="aptab" data-t="plans">🔍 Plans</button>
   </div>
   <div style="padding:8px 14px 0"><input id="apQ" type="search" placeholder="🔍 इस tab में खोजें: नंबर, UID या रकम" style="width:100%;padding:12px;border-radius:10px;border:1px solid #ccc;font-size:16px;box-sizing:border-box"></div>
   <div class="aplist" id="apList"></div>
@@ -553,35 +554,23 @@ const EMPTY={name:"",price:"",quota:"0/3",daily:"",day:"",total:"",img:"",varian
 let f=clone(EMPTY),editIdx=-1;
 const sharepage=document.getElementById("sharepage");
 let qrDone=false;
-function makeQR(){if(qrDone)return;const q=document.getElementById("qr");
-  if(SHAREQR.qr){
-    // Use Share QR code with URL display
-    q.innerHTML="";
-    const wrapper=document.createElement("div");
-    wrapper.style.cssText="text-align:center";
-    const img=document.createElement("img");
-    img.src=SHAREQR.qr;
-    img.style.cssText="width:200px;height:200px;border-radius:8px;display:block;margin:0 auto";
-    wrapper.appendChild(img);
-    q.appendChild(wrapper);
-
-    // Show URL if available
-    if(SHAREQR.url){
-      document.getElementById("shareUrl").textContent=SHAREQR.url;
-      document.getElementById("urlBox").style.display="block";
-    }else{
-      document.getElementById("urlBox").style.display="none";
-    }
-    qrDone=true;
-  }else if(window.QRCode){
-    // Fallback: Generate QR from referral link
-    q.innerHTML="";
-    new QRCode(q,{text:REF_LINK,width:200,height:200,correctLevel:QRCode.CorrectLevel.M});
-    document.getElementById("urlBox").style.display="none";
-    qrDone=true;
-  }else{
-    q.textContent="QR load nahi hua (internet check karein)";
+function makeQR(){
+  const q=document.getElementById("qr");
+  const link=myRefLink(), code=myRefCode();
+  const u=document.getElementById("shareUrl"), box=document.getElementById("urlBox");
+  if(!window.MY_UID){
+    q.innerHTML='<p style="text-align:center;color:#777">Referral link देखने के लिए पहले login करें</p>';
+    if(box)box.style.display="none";
+    return;
   }
+  if(u)u.textContent=link;
+  if(box)box.style.display="block";
+  let c=document.getElementById("refCode");
+  if(!c){c=document.createElement("div");c.id="refCode";c.style.cssText="text-align:center;font-size:17px;font-weight:700;margin:8px 0";const crow=box.querySelector(".crow");crow.parentNode.insertBefore(c,crow.nextSibling)}
+  c.innerHTML='<div class="crow"><span>आपका Referral code: <b id="refCodeText">'+code+'</b></span><button data-copy="refCodeText">Copy</button></div>';
+  q.innerHTML="";
+  new QRCode(q,{text:link,width:200,height:200,correctLevel:QRCode.CorrectLevel.M});
+  qrDone=true;
 }
 document.addEventListener("click",e=>{const c=e.target.closest("[data-copy]");if(!c)return;
   const t=document.getElementById(c.dataset.copy).textContent;
@@ -693,6 +682,7 @@ async function loadUsers(){
     try{
       const ps=await F.getDocs(F.collection(F.db,"payments"));
       PAY_ALL=ps.docs.map(d=>({id:d.id,...d.data()}));
+      try{const pu=await F.getDocs(F.collection(F.db,"purchases"));PURCH=pu.docs.map(d=>({id:d.id,...d.data()}))}catch(e){PURCH=[]}
       const PAY=PAY_ALL.filter(p=>p.status==="SUCCESS");
       USERS_LIST.forEach(u=>{
         const mine=PAY.filter(p=>p.uid===u.uid).map(p=>({amount:Number(p.amount)||0,method:"Cashfree",status:"SUCCESS",timestamp:p.paidAt||p.createdAt||0,orderId:p.id}));
@@ -719,6 +709,7 @@ function apStats(uid){
     "Current balance: "+inr(u.balance||0)];
 }
 let PAY_ALL=[];
+let PURCH=[];
 window.MY_UID="";
 function myRefCode(){return window.MY_UID?window.MY_UID.slice(0,8):""}
 function myRefLink(){return location.origin+location.pathname+"?ref="+myRefCode()}
@@ -734,27 +725,20 @@ function apFmt(v){
 }
 function apAll(uid){
   const u=USERS_LIST.find(x=>x.uid===uid)||{};
-  const L=["— User ka पूरा data —"];
-  Object.keys(u).sort().forEach(k=>{
-    if(k==="uid")return;
-    const v=u[k];
-    if(Array.isArray(v)){
-      L.push(k+": "+v.length+" entries");
-      v.forEach((it,i)=>{
-        if(it&&typeof it==="object")L.push("  "+k+" #"+(i+1)+": "+Object.keys(it).map(kk=>kk+"="+apFmt(it[kk])).join(", "));
-        else L.push("  "+k+" #"+(i+1)+": "+apFmt(it));
-      });
-    } else L.push(k+": "+apFmt(v));
-  });
-  L.push("— Payments (Cashfree, सभी status) —");
-  const pays=PAY_ALL.filter(p=>p.uid===uid).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-  if(!pays.length)L.push("कोई payment नहीं");
-  pays.forEach(p=>L.push("Order "+p.id+": ₹"+(p.amount||0)+" · "+(p.status||"-")+" · "+(p.createdAt?dt(p.createdAt):"-")+(p.paidAt?" · paid "+dt(p.paidAt):"")));
-  L.push("— Withdraw requests —");
-  const wds=WD_LIST.filter(w=>w.uid===uid).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-  if(!wds.length)L.push("कोई withdraw नहीं");
-  wds.forEach(w=>L.push("₹"+(w.amount||0)+" · "+(w.status||"PENDING")+" · UPI "+(w.upi||"-")+" · "+(w.createdAt?dt(w.createdAt):"-")));
-  return L;
+  const sum=a=>a.reduce((x,y)=>x+(Number(y.amount||y.price)||0),0);
+  const rc=PAY_ALL.filter(p=>p.uid===uid&&p.status==="SUCCESS");
+  const kids=refChildren(uid);
+  const wd=WD_LIST.filter(w=>w.uid===uid);
+  const pl=PURCH.filter(x=>x.uid===uid);
+  const cnt={};pl.forEach(x=>cnt[x.name]=(cnt[x.name]||0)+1);
+  const plansTxt=Object.keys(cnt).map(n=>n+": "+cnt[n]+" baar").join(", ")||"कोई plan नहीं";
+  return [
+    "Current balance: ₹"+(Number(u.balance)||0),
+    "Recharge: ₹"+sum(rc)+" ("+rc.length+" baar)",
+    "Referral: "+kids.length+" log",
+    "Withdrawal: ₹"+sum(wd)+" · PAID ₹"+sum(wd.filter(w=>w.status==="PAID"))+" · PENDING ₹"+sum(wd.filter(w=>w.status!=="PAID")),
+    "Plans: "+plansTxt
+  ];
 }
 function apHistory(uid){
   const u=USERS_LIST.find(x=>x.uid===uid)||{};
@@ -762,6 +746,12 @@ function apHistory(uid){
   const wd=WD_LIST.filter(w=>w.uid===uid).map(w=>({t:Number(w.createdAt)||0,s:"Withdraw: "+inr(w.amount||0)+" · "+(w.status||"PENDING")+" · UPI "+(w.upi||"-")+" · "+(w.createdAt?dt(w.createdAt):"-")}));
   const all=rh.concat(wd).sort((a,b)=>b.t-a.t).map(x=>x.s);
   return ["— पूरा इतिहास —"].concat(all.length?all:["कोई recharge या withdraw नहीं"]);
+}
+function wdUpiLines(wd){
+  const s=[...wd].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const seen=[];
+  s.forEach(w=>{const k=(w.upi||"-")+"|"+(w.phone||"-");if(!seen.includes(k))seen.push(k)});
+  return seen.map(k=>{const i=k.indexOf("|");return "UPI ID: "+k.slice(0,i)+" · UPI Number: "+k.slice(i+1)});
 }
 let AP_Q={};let AP_LAST="";
 function apSummary(uid){
@@ -781,7 +771,7 @@ function apRows(){
     return USERS_LIST.filter(u=>refChildren(u.uid).length>0).map(u=>{
       const kids=refChildren(u.uid);
       return {phone:apPhone(u.uid),date:latest(kids,k=>k.createdAt),
-        detail:apSummary(u.uid).concat(["Referred users: "+kids.map(k=>apPhone(k.uid)).join(", ")],apAll(u.uid))};
+        detail:apAll(u.uid)};
     }).sort((a,b)=>b.date-a.date);
   }
   if(AP_TAB==="recharge"){
@@ -789,7 +779,17 @@ function apRows(){
     return uids.map(uid=>{
       const rc=PAY_ALL.filter(p=>p.uid===uid&&p.status==="SUCCESS");
       return {phone:apPhone(uid),date:latest(rc,p=>p.paidAt||p.createdAt),
-        detail:apSummary(uid).concat(apAll(uid))};
+        detail:[].concat(apAll(uid))};
+    }).sort((a,b)=>b.date-a.date);
+  }
+  if(AP_TAB==="plans"){
+    const uids=[...new Set(PURCH.map(x=>x.uid))];
+    return uids.map(uid=>{
+      const pl=PURCH.filter(x=>x.uid===uid);
+      const cnt={};pl.forEach(x=>cnt[x.name]=(cnt[x.name]||0)+1);
+      const summary=Object.keys(cnt).map(n=>n+": "+cnt[n]+" baar");
+      return {phone:apPhone(uid),date:latest(pl,x=>x.at),
+        detail:apAll(uid)};
     }).sort((a,b)=>b.date-a.date);
   }
   if(AP_TAB==="withdraw"){
@@ -797,11 +797,11 @@ function apRows(){
     return uids.map(uid=>{
       const wd=WD_LIST.filter(w=>w.uid===uid);
       return {phone:apPhone(uid),date:latest(wd,w=>w.createdAt),
-        detail:apSummary(uid).concat(apAll(uid))};
+        detail:[].concat(apAll(uid),wdUpiLines(wd))};
     }).sort((a,b)=>b.date-a.date);
   }
   return USERS_LIST.map(u=>({phone:apPhone(u.uid),date:u.createdAt||0,
-    detail:apSummary(u.uid).concat(apAll(u.uid))})).sort((a,b)=>b.date-a.date);
+    detail:[].concat(apAll(u.uid))})).sort((a,b)=>b.date-a.date);
 }
 function apRender(){
   const aq=document.getElementById("apQ");
@@ -813,7 +813,6 @@ function apRender(){
   document.getElementById("apList").innerHTML=rows.length?rows.map(r=>`<div class="apcard">
     <div class="apr"><span class="apic">&#9733;</span>Mobile Number: <b>${esc(r.phone||"-")}</b></div>
     <div class="apdet">${r.detail.map(x=>`<span>${esc(x)}</span>`).join("")}</div>
-    <div class="apr apfoot"><span class="apv">&#128065; View Details</span><span class="apd">${r.date?dt(r.date):"-"}</span></div>
   </div>`).join(""):'<div class="apempty">Koi record nahi mila.</div>';
 }
 async function apLoad(){
@@ -846,7 +845,7 @@ async function loadWithdrawals(){
   }catch(e){console.warn("withdraw list load failed",e);show("Withdraw list load nahi hui (Firestore rules check karein)")}
 }
 function wdSection(){
-  const wl=WD_LIST.length?WD_LIST.map(w=>`<div class="litem"><div class="meta"><b>${inr(w.amount)} · ${esc(w.status||"PENDING")}</b><span>UPI: ${esc(w.upi||"-")}</span><span>Number: ${esc(w.phone||"-")}</span><span>${dt(w.createdAt||Date.now())}</span></div><div class="ops">${w.status==="PAID"?"":`<button class="btn" data-wdpaid="${esc(w.id)}">Mark paid</button>`}</div></div>`).join(""):'<p style="color:#777;padding:10px 0">Koi withdrawal request nahi.</p>';
+  const wl=WD_LIST.length?WD_LIST.map(w=>`<div class="litem"><div class="meta"><b>${inr(w.amount)} · ${esc(w.status||"PENDING")}</b><span>UPI: ${esc(w.upi||"-")}</span><span>Number: ${esc(w.phone||"-")}</span><span>${dt(w.createdAt||Date.now())}</span></div><div class="ops">${w.status==="PENDING"||!w.status?`<button class="btn" data-wdpaid="${esc(w.id)}">Mark paid</button> <button class="btn del" data-wdreject="${esc(w.id)}">Reject</button>`:`<small>${esc(w.status)}</small>`}</div></div>`).join(""):'<p style="color:#777;padding:10px 0">Koi withdrawal request nahi.</p>';
   const bl=BANK_LIST.length?BANK_LIST.map(b=>`<div class="litem"><div class="meta"><b>${esc(b.upi||"-")}</b><span>Number: ${esc(b.phone||"-")}</span></div></div>`).join(""):'<p style="color:#777;padding:10px 0">Koi UPI detail nahi.</p>';
   return `<div class="ptitle" style="margin-top:16px">Withdrawal requests (${WD_LIST.length})</div>${wl}<div class="ptitle" style="margin-top:16px">UPI & number (${BANK_LIST.length})</div>${bl}<button class="btn light" data-wdreload="1" style="width:100%;margin-top:8px">Refresh</button>`;
 }
@@ -858,7 +857,18 @@ aBody.addEventListener("click",async e=>{const t=e.target.closest("button"); if(
   if(t.dataset.alld){openAllPage();return}
   if(t.dataset.allback){ALL_VIEW=false;renderAdmin();admin.scrollTop=0;return}
   if(t.dataset.wdreload){loadWithdrawals();return}
-  if(t.dataset.wdpaid){try{const F=await firebaseReady;await F.setDoc(F.doc(F.db,"withdrawals",t.dataset.wdpaid),{status:"PAID",paidAt:Date.now()},{merge:true});show("Paid mark ho gaya");loadWithdrawals()}catch(err){show("Update nahi hua, rules check karein")}}
+  if(t.dataset.wdpaid||t.dataset.wdreject){
+    const act=t.dataset.wdpaid?"mark-paid":"reject-withdraw";const id=t.dataset.wdpaid||t.dataset.wdreject;
+    if(act==="reject-withdraw"&&!confirm("Ye withdraw reject karein? Rakam user ke balance mein wapas jud jayegi."))return;
+    try{
+      const F=await firebaseReady;const token=await F.auth.currentUser.getIdToken();
+      const r=await fetch(WORKER_URL+"/"+act,{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({id})});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||"Nahin hua");
+      show(act==="mark-paid"?"Paid mark ho gaya":"Reject ho gaya, rakam wapas joodi");
+      loadWithdrawals();
+    }catch(err){show("Nahin hua: "+(err.message||err))}
+  }
 });
 function renderAdmin(){
   const editing=editIdx>=0;
@@ -902,7 +912,7 @@ function renderAdmin(){
     <div class="meta"><b>${esc(p.name)}</b><span>₹${esc(p.price)} · Daily ₹${esc(p.daily)} · ${esc(p.day)} day · Total ₹${esc(p.total)}</span></div>
     <div class="ops"><button class="btn light" data-edit="${i}">Edit</button><button class="btn del" data-del="${i}">Delete</button></div>
   </div>`).join(""):'<p style="text-align:center;color:#777;padding:20px 0">No plans uploaded yet.</p>';
-  aBody.innerHTML=ALL_VIEW?allDetails():`<button class="btn" data-alld="1" style="width:100%;margin-bottom:10px">All details</button>`+statusBox()+form+paySettings+wdSection()+`<div class="ptitle" style="margin-top:16px">Uploaded plans (${PLANS.length})</div>`+list+`<button class="resetlink" data-act="reset">Reset to default plans</button>`;
+  aBody.innerHTML=ALL_VIEW?allDetails():`<button class="btn" data-alld="1" style="width:100%;margin-bottom:10px">All details</button>`+statusBox()+form+wdSection()+`<div class="ptitle" style="margin-top:16px">Uploaded plans (${PLANS.length})</div>`+list+`<button class="resetlink" data-act="reset">Reset to default plans</button>`;
 }
 function openAdmin(){ALL_VIEW=false;f=clone(EMPTY);editIdx=-1;renderAdmin();loadWithdrawals();admin.classList.add("open");admin.scrollTop=0}
 function closeAdmin(){admin.classList.remove("open")}
@@ -1172,14 +1182,16 @@ async function doBuy(i){
   // Save to Firebase
   try{
     const F=await firebaseReady;
-    const userDoc=F.doc(F.db,"users",F.auth.currentUser.uid);
-    await F.setDoc(userDoc,{
-      balance:S.bal,
+    const uid=F.auth.currentUser.uid;
+    await F.setDoc(F.doc(F.db,"users",uid),{
       totalSpent:S.spent,
       plans:S.plans,
       transactions:S.tx,
       lastUpdated:Date.now()
     },{merge:true});
+    await F.setDoc(F.doc(F.db,"purchases",uid.slice(0,8)+"_"+Date.now()),{
+      uid:uid,name:p.name,price:+p.price,daily:+p.daily,day:+p.day,total:+p.total,at:Date.now()
+    });
     show(p.name+" purchased ✓",2000);
   }catch(err){
     console.warn("Firebase save failed:",err);
@@ -1468,12 +1480,18 @@ function openWithdraw(){const b=S.bank;
 async function doWithdraw(){const a=Number(document.getElementById("wdAmt").value);
   if(!a||a<CFG.minWd)return show("Minimum withdraw "+inr(CFG.minWd));
   if(a>S.bal)return show("Balance kam hai");
-  try{const F=await firebaseReady;const uid=F.auth.currentUser?F.auth.currentUser.uid:null;
-    if(!uid)return show("Pehle login karein");
-    const id="wd_"+uid.slice(0,8)+"_"+Date.now();
-    await F.setDoc(F.doc(F.db,"withdrawals",id),{uid,amount:a,upi:S.bank.u,phone:S.bank.p||"",status:"PENDING",createdAt:Date.now()});
-  }catch(e){console.warn("withdraw save failed",e);return show("Request save nahi hui, dobara koshish karein")}
-  S.bal-=a;addTx("Withdraw",-a,"To "+S.bank.u+" (pending)");S.unread++;refresh();sub.classList.remove("open");show("Withdraw request "+inr(a)+" submitted")}
+  try{
+    const F=await firebaseReady;const u=F.auth.currentUser;
+    if(!u)return show("Pehle login karein");
+    const token=await u.getIdToken();
+    const res=await fetch(WORKER_URL+"/withdraw",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({amount:a,upi:S.bank.u,phone:S.bank.p||USER||""})});
+    const d=await res.json();
+    if(!res.ok)return show(d.error||"Withdraw nahin hua");
+    S.bal=Number(d.balance)||0;
+    addTx("Withdraw",-a,"To "+S.bank.u+" (pending)");S.unread++;refresh();
+    sub.classList.remove("open");show("Withdraw request "+inr(a)+" submitted");
+  }catch(e){console.warn("withdraw failed",e);show("Withdraw nahin hua, internet check karein")}
+}
 const linkBtn=(t,u)=>`<a class="sbtn" href="${u}" target="_blank" rel="noopener">${t}</a>`;
 function openService(){openSub("Service",`<div class="sc">Koi problem ho to hamari support team se baat karein.</div>${linkBtn("Telegram Support",CFG.support)}${linkBtn("WhatsApp Support",CFG.wa)}`)}
 function openChannel(){openSub("Channel",`<div class="sc">Latest updates ke liye hamara official channel join karein.</div>${linkBtn("Join Telegram Channel",CFG.channel)}`)}
