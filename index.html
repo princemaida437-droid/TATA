@@ -315,7 +315,7 @@ nav a.on::before{content:"";position:absolute;top:-17px;width:51px;height:51px;b
       <div class="pm" data-pm="Pay-M"><span class="cb"></span>Pay-M</div>
     </div>
     <button class="paybtn" id="payBtn">Pay 670</button>
-    <div class="rnote">Demo screen – no real payment is made</div>
+    
   </div>
 </div>
 <div class="rpage" id="wpage">
@@ -554,6 +554,16 @@ const EMPTY={name:"",price:"",quota:"0/3",daily:"",day:"",total:"",img:"",varian
 let f=clone(EMPTY),editIdx=-1;
 const sharepage=document.getElementById("sharepage");
 let qrDone=false;
+async function loadMyRefCount(code){
+  const el=document.getElementById("refCount");
+  if(!el)return;
+  try{
+    const F=await firebaseReady;
+    const s=await F.getDocs(F.collection(F.db,"users"));
+    const n=s.docs.filter(d=>d.data().referredBy===code&&d.id!==window.MY_UID).length;
+    el.textContent="आपने अब तक "+n+" लोगों को refer किया है";
+  }catch(e){el.textContent="Referral count abhi nahin dikh raha"}
+}
 function makeQR(){
   const q=document.getElementById("qr");
   const link=myRefLink(), code=myRefCode();
@@ -567,7 +577,8 @@ function makeQR(){
   if(box)box.style.display="block";
   let c=document.getElementById("refCode");
   if(!c){c=document.createElement("div");c.id="refCode";c.style.cssText="text-align:center;font-size:17px;font-weight:700;margin:8px 0";const crow=box.querySelector(".crow");crow.parentNode.insertBefore(c,crow.nextSibling)}
-  c.innerHTML='<div class="crow"><span>आपका Referral code: <b id="refCodeText">'+code+'</b></span><button data-copy="refCodeText">Copy</button></div>';
+  c.innerHTML='<div class="crow"><span>आपका Referral code: <b id="refCodeText">'+code+'</b></span><button data-copy="refCodeText">Copy</button></div><div id="refCount" style="text-align:center;font-weight:600;margin:8px 0;color:#0f6b2f">Referral gin rahe hain...</div>';
+  loadMyRefCount(code);
   q.innerHTML="";
   new QRCode(q,{text:link,width:200,height:200,correctLevel:QRCode.CorrectLevel.M});
   qrDone=true;
@@ -1477,6 +1488,15 @@ function openWithdraw(){const b=S.bank;
   <div class="sc"><small>UPI ID</small>${esc(b.u)}</div>
   <div class="sc">Amount (Min: ${inr(CFG.minWd)}, Max: ${inr(S.bal)})<input class="sin" id="wdAmt" type="number" inputmode="numeric" min="${CFG.minWd}" max="${S.bal}" placeholder="Enter withdrawal amount"></div>
   ${_saved}<button class="sbtn" data-go="wd">Withdraw</button><button class="sbtn o" data-go="addupi">+ Add another UPI ID & number</button><button class="sbtn o" data-go="rebind">Change UPI ID</button>`)}
+document.addEventListener("input",e=>{
+  if(e.target&&e.target.id==="wdAmt"){
+    const max=Number(S.bal)||0;
+    if(Number(e.target.value)>max){
+      e.target.value=max;
+      show("Aapke balance se zyada nahin daal sakte: "+inr(max),2500);
+    }
+  }
+});
 async function doWithdraw(){const a=Number(document.getElementById("wdAmt").value);
   if(!a||a<CFG.minWd)return show("Minimum withdraw "+inr(CFG.minWd));
   if(a>S.bal)return show("Balance kam hai");
@@ -1666,7 +1686,7 @@ nav.bn button.on{color:var(--green);font-weight:700}
       <label class="f"><span class="cc">+91</span><input type="tel" inputmode="numeric" maxlength="10" name="phone" placeholder="Enter Phone Number" autocomplete="tel-national"></label>
       <label class="f"><input type="password" name="pw" placeholder="Enter new password" autocomplete="new-password"><button type="button" class="eye" aria-label="Show password"></button></label>
       <label class="f"><input type="password" name="pw2" placeholder="Enter new password again" autocomplete="new-password"><button type="button" class="eye" aria-label="Show password"></button></label>
-      <label class="f"><input type="password" name="wpw" placeholder="Enter Withdrawal Password" autocomplete="off"><button type="button" class="eye" aria-label="Show password"></button></label>
+      <label class="f"><input type="text" name="refer" placeholder="Enter referral code (optional)" autocomplete="off" maxlength="8"></label>
       <div class="cap">
         <label class="f"><input type="text" name="captcha" placeholder="Enter captcha" maxlength="5" autocomplete="off" autocapitalize="off"></label>
         <button type="button" class="capbox" id="capBtn" aria-label="Refresh captcha"><canvas id="capCanvas" width="120" height="52"></canvas></button>
@@ -1792,14 +1812,13 @@ document.getElementById('register').addEventListener('submit',async e=>{
   if(!/^[6-9]\d{9}$/.test(ph))return show(f,'Enter a valid 10-digit phone number.');
   if(f.pw.value.length<6)return show(f,'Password must be at least 6 characters.');
   if(f.pw.value!==f.pw2.value)return show(f,'Passwords do not match.');
-  if(f.wpw.value.length<6)return show(f,'Withdrawal password must be at least 6 characters.');
   if(f.captcha.value.trim().toLowerCase()!==capText.toLowerCase()){newCaptcha();f.captcha.value='';return show(f,'Captcha is wrong. Try the new one.');}
   const btn=f.querySelector('.go');btn.disabled=true;
   try{
     const F=await firebaseReady;
     const cred=await F.createUserWithEmailAndPassword(F.auth,phoneEmail(ph),f.pw.value);
     await F.setDoc(F.doc(F.db,'users',cred.user.uid),{
-      uid:cred.user.uid,phone:ph,withdrawalPasswordHash:await hash(ph+':w:'+f.wpw.value),
+      uid:cred.user.uid,phone:ph,referredBy:((f.refer.value||'').trim()||localStorage.getItem('bullet_ref')||'').slice(0,8),
       balance:0,createdAt:Date.now()
     });
     await F.signOut(F.auth);
@@ -1823,7 +1842,7 @@ document.getElementById('langBtn').addEventListener('click',()=>{
   document.querySelector('#login [name=pw]').placeholder=t.pw;
   document.querySelector('#register [name=pw]').placeholder=t.npw;
   document.querySelector('[name=pw2]').placeholder=t.npw2;
-  document.querySelector('[name=wpw]').placeholder=t.wpw;
+  document.querySelector('[name=refer]').placeholder=(cur==='hi'?'रेफ़रल कोड (वैकल्पिक)':'Enter referral code (optional)');
   document.querySelector('[name=captcha]').placeholder=t.code;
   document.querySelectorAll('.go').forEach((b,i)=>b.textContent=i?t.register:t.login);
   document.documentElement.lang=cur;
