@@ -12,7 +12,7 @@ body{font-family:Roboto,"Segoe UI",system-ui,sans-serif;background:var(--bg);col
   max-width:430px;margin:0 auto;padding:6px 14px calc(70px + env(safe-area-inset-bottom,0px));min-height:100vh}
 .main-content{display:none}
 .main-content.show{display:block}
-.actions{background:var(--green);border-radius:12px;display:grid;grid-template-columns:repeat(4,1fr);padding:14px 4px 10px;height:91px;align-items:center}
+.actions{background:var(--green);border-radius:12px;display:grid;grid-template-columns:repeat(4,1fr) auto;padding:14px 4px 10px;height:91px;align-items:center}
 .actions button{background:none;border:0;color:#fff;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer}
 .actions svg{width:30px;height:30px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .actions svg .f{fill:#fff;stroke:none}
@@ -281,7 +281,11 @@ nav a.on::before{content:"";position:absolute;top:-17px;width:51px;height:51px;b
   <button data-msg="Service">
     <svg viewBox="0 0 48 48"><circle class="f" cx="24" cy="19" r="9"/><path class="f" d="M8 44c0-9 7-14 16-14s16 5 16 14z"/><path d="M13 22v-4a11 11 0 0122 0v4M13 22h-2v-3M35 22h2v-3" stroke="#fff"/></svg>Service</button>
   <button data-msg="Channel">
-    <svg viewBox="0 0 48 48"><path class="f" d="M4 22L44 5 36 43 24 32 17 40v-12L38 12 14 26z"/></svg>Channel</button>
+    <svg viewBox="0 0 48 48"><path class="f" d="M4 22L44 5 36 43 24 32 17 40v-12L38 12 14 26z"/></svg>Channel
+  </button>
+  <div style="display:flex;align-items:center;justify-content:center;border-left:1px solid rgba(255,255,255,.35);height:44px;align-self:center">
+    <span id="msgIco" title="Messages" style="position:relative;display:flex;cursor:pointer;padding:2px 6px"><svg viewBox="0 0 24 24" style="width:26px;height:26px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9z"/><path d="M10 21a2 2 0 004 0"/></svg><b id="msgDot" style="position:absolute;top:-2px;right:0;background:#e53935;color:#fff;border-radius:50%;min-width:16px;height:16px;font-size:10px;display:none;align-items:center;justify-content:center;padding:0 3px">0</b></span>
+  </div>
 </div>
 
 <!-- Plans are rendered here -->
@@ -491,13 +495,13 @@ const ADMIN_FB_CONFIG={
 (function(){try{const r=new URLSearchParams(location.search).get("ref");if(r)localStorage.setItem("bullet_ref",r.slice(0,20))}catch(e){}})();
 const firebaseReady=(async()=>{
   const V="10.12.2",B="https://www.gstatic.com/firebasejs/"+V+"/";
-  const [{initializeApp},{getAuth,setPersistence,browserLocalPersistence,signInWithEmailAndPassword,signOut},{getFirestore,doc,setDoc,getDoc,onSnapshot,getDocs,collection},{getStorage,ref:storageRef,uploadBytes,getDownloadURL},{getFunctions,httpsCallable}]=await Promise.all([
+  const [{initializeApp},{getAuth,setPersistence,browserLocalPersistence,signInWithEmailAndPassword,signOut},{getFirestore,doc,setDoc,getDoc,onSnapshot,getDocs,collection,query,where},{getStorage,ref:storageRef,uploadBytes,getDownloadURL},{getFunctions,httpsCallable}]=await Promise.all([
     import(B+"firebase-app.js"),import(B+"firebase-auth.js"),import(B+"firebase-firestore.js"),import(B+"firebase-storage.js"),import(B+"firebase-functions.js")
   ]);
   const app=initializeApp(ADMIN_FB_CONFIG);
   const auth=getAuth(app);
   try{await setPersistence(auth,browserLocalPersistence);if(auth.authStateReady)await auth.authStateReady()}catch(e){}
-  return {app,auth,signInWithEmailAndPassword,signOut,db:getFirestore(app),storage:getStorage(app),doc,setDoc,getDoc,onSnapshot,getDocs,collection,storageRef,uploadBytes,getDownloadURL,getFunctions,httpsCallable};
+  return {app,auth,signInWithEmailAndPassword,signOut,db:getFirestore(app),storage:getStorage(app),doc,setDoc,getDoc,onSnapshot,getDocs,collection,query,where,storageRef,uploadBytes,getDownloadURL,getFunctions,httpsCallable};
 })();
 const ACACHE="bullet_admin_cache_v1";
 function cacheAdmin(){try{localStorage.setItem(ACACHE,JSON.stringify({plans:PLANS,payment:PAYMENT,shareQR:SHAREQR}))}catch(e){}}
@@ -804,11 +808,19 @@ function apRows(){
     }).sort((a,b)=>b.date-a.date);
   }
   if(AP_TAB==="withdraw"){
-    const uids=[...new Set(WD_LIST.map(w=>w.uid))];
+    const pend=WD_LIST.filter(w=>(w.status==="PENDING"||!w.status));
+    const uids=[...new Set(pend.map(w=>w.uid))];
     return uids.map(uid=>{
-      const wd=WD_LIST.filter(w=>w.uid===uid);
+      const wd=pend.filter(w=>w.uid===uid).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+      const reqs=wd.map(w=>{
+        const isPending=(w.status==="PENDING"||!w.status);
+        const btns=isPending
+          ?`<button class="btn" data-wdsuccess="${esc(w.id)}">Success ✓</button> <button class="btn del" data-wdreject="${esc(w.id)}">Reject</button>`
+          :`<b>${esc(w.status)}</b>`;
+        return `<div style="background:#f5f7f5;border-radius:8px;padding:8px;margin-top:6px"><div>₹${w.amount||0} · ${w.createdAt?dt(w.createdAt):"-"} · UPI ${esc(w.upi||"-")}</div><div style="margin-top:6px">${btns}</div></div>`;
+      }).join("");
       return {phone:apPhone(uid),date:latest(wd,w=>w.createdAt),
-        detail:[].concat(apAll(uid),wdUpiLines(wd))};
+        detail:[].concat(apAll(uid),wdUpiLines(wd)),actions:reqs};
     }).sort((a,b)=>b.date-a.date);
   }
   return USERS_LIST.map(u=>({phone:apPhone(u.uid),date:u.createdAt||0,
@@ -823,7 +835,7 @@ function apRender(){
   if(!rows.length&&USERS_ERR){document.getElementById("apList").innerHTML='<div class="apempty">Data load nahi hua.<br><small>Reason: '+esc(USERS_ERR)+'</small><br>Firebase Firestore rules check karein (admin ko users/withdrawals padhne ki permission chahiye).</div>';return}
   document.getElementById("apList").innerHTML=rows.length?rows.map(r=>`<div class="apcard">
     <div class="apr"><span class="apic">&#9733;</span>Mobile Number: <b>${esc(r.phone||"-")}</b></div>
-    <div class="apdet">${r.detail.map(x=>`<span>${esc(x)}</span>`).join("")}</div>
+    <div class="apdet">${r.detail.map(x=>`<span>${esc(x)}</span>`).join("")}</div>${r.actions?`<div>${r.actions}</div>`:""}
   </div>`).join(""):'<div class="apempty">Koi record nahi mila.</div>';
 }
 async function apLoad(){
@@ -843,9 +855,76 @@ document.getElementById("allp").addEventListener("click",e=>{
   if(e.target.closest("[data-refresh]")){apLoad();return}
   const tab=e.target.closest(".aptab");
   if(tab){AP_TAB=tab.dataset.t;apRender();return}
-  const card=e.target.closest(".apcard");
-  if(card){const d=card.querySelector(".apdet");d.hidden=!d.hidden}
+  const wbtn=e.target.closest("[data-wdsuccess],[data-wdreject]");
+  if(wbtn){
+    if(wbtn.dataset.wdsuccess)wdAction(wbtn.dataset.wdsuccess,"mark-paid");
+    else wdAction(wbtn.dataset.wdreject,"reject-withdraw");
+    return;
+  }
 });
+let MSGS=[];
+let POPUP_SHOWN={};
+async function loadMessages(){
+  try{
+    const F=await firebaseReady;const u=F.auth.currentUser;if(!u)return MSGS;
+    const s=await F.getDocs(F.query(F.collection(F.db,"messages"),F.where("uid","==",u.uid)));
+    MSGS=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.at||0)-(a.at||0));
+  }catch(e){console.warn("messages load failed",e)}
+  updateMsgIco();
+  return MSGS;
+}
+async function markRead(list){
+  try{
+    const F=await firebaseReady;
+    for(const m of list){await F.setDoc(F.doc(F.db,"messages",m.id),{read:true},{merge:true});m.read=true}
+  }catch(e){console.warn("markRead failed",e)}
+  updateMsgIco();
+}
+function updateMsgIco(){
+  const n=MSGS.filter(m=>!m.read).length;
+  const dot=document.getElementById("msgDot");
+  if(dot){dot.textContent=n;dot.style.display=n?"flex":"none"}
+}
+function showPopup(text){
+  const o=document.createElement("div");
+  o.style.cssText="position:fixed;inset:0;background:#0008;z-index:300;display:flex;align-items:center;justify-content:center;padding:20px";
+  o.innerHTML='<div style="background:#fff;border-radius:14px;padding:20px;max-width:340px;width:100%;text-align:center"><div style="font-size:42px">✅</div><div style="font-weight:700;margin:8px 0;white-space:pre-line;color:#111">'+esc(text)+'</div><button id="msgOk" style="margin-top:10px;padding:10px 26px;border:0;border-radius:8px;background:#0f6b2f;color:#fff;font-weight:600">OK</button></div>';
+  document.body.appendChild(o);
+  o.querySelector("#msgOk").onclick=()=>o.remove();
+}
+async function checkMessages(){
+  const msgs=await loadMessages();
+  const fresh=msgs.filter(m=>!m.read&&!POPUP_SHOWN[m.id]);
+  if(!fresh.length)return;
+  fresh.forEach(m=>POPUP_SHOWN[m.id]=1);
+  showPopup(fresh.map(m=>m.text).join("\n\n"));
+  markRead(fresh);
+}
+async function openMessages(){
+  openSub("Messages",'<div id="msgList" class="sc">लोड हो रहा है...</div>');
+  const msgs=await loadMessages();
+  const el=document.getElementById("msgList");
+  if(!el)return;
+  el.innerHTML=msgs.length
+    ?msgs.map(m=>'<div class="sc" style="margin-bottom:8px;'+(m.read?'':'border-left:4px solid #0f6b2f;')+'"><div>'+esc(m.text)+'</div><small>'+(m.at?dt(m.at):"")+'</small></div>').join("")
+    :'<div class="sc">कोई message नहीं</div>';
+  const unread=msgs.filter(m=>!m.read);
+  if(unread.length)markRead(unread);
+}
+setInterval(()=>{firebaseReady.then(F=>{if(F.auth.currentUser)checkMessages()}).catch(()=>{})},30000);
+
+async function wdAction(id,act){
+  if(act==="reject-withdraw"&&!confirm("Ye withdraw reject karein? Rakam user ke balance mein wapas jud jayegi."))return;
+  try{
+    const F=await firebaseReady;const token=await F.auth.currentUser.getIdToken();
+    const r=await fetch(WORKER_URL+"/"+act,{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({id})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||"Nahin hua");
+    show(act==="mark-paid"?"Success ho gaya, user ko message chala gaya":"Reject ho gaya, rakam wapas joodi",3000);
+    await loadWithdrawals();
+    apRender();
+  }catch(err){show("Nahin hua: "+(err.message||err),5000)}
+}
 async function loadWithdrawals(){
   try{const F=await firebaseReady;
     const w=await F.getDocs(F.collection(F.db,"withdrawals"));
@@ -923,7 +1002,7 @@ function renderAdmin(){
     <div class="meta"><b>${esc(p.name)}</b><span>₹${esc(p.price)} · Daily ₹${esc(p.daily)} · ${esc(p.day)} day · Total ₹${esc(p.total)}</span></div>
     <div class="ops"><button class="btn light" data-edit="${i}">Edit</button><button class="btn del" data-del="${i}">Delete</button></div>
   </div>`).join(""):'<p style="text-align:center;color:#777;padding:20px 0">No plans uploaded yet.</p>';
-  aBody.innerHTML=ALL_VIEW?allDetails():`<button class="btn" data-alld="1" style="width:100%;margin-bottom:10px">All details</button>`+statusBox()+form+wdSection()+`<div class="ptitle" style="margin-top:16px">Uploaded plans (${PLANS.length})</div>`+list+`<button class="resetlink" data-act="reset">Reset to default plans</button>`;
+  aBody.innerHTML=ALL_VIEW?allDetails():`<button class="btn" data-alld="1" style="width:100%;margin-bottom:10px">All details</button>`+statusBox()+form+`<div class="ptitle" style="margin-top:16px">Uploaded plans (${PLANS.length})</div>`+list+`<button class="resetlink" data-act="reset">Reset to default plans</button>`;
 }
 function openAdmin(){ALL_VIEW=false;f=clone(EMPTY);editIdx=-1;renderAdmin();loadWithdrawals();admin.classList.add("open");admin.scrollTop=0}
 function closeAdmin(){admin.classList.remove("open")}
@@ -1094,6 +1173,7 @@ const toast=document.getElementById("toast");
 function show(t,ms){toast.textContent=t;toast.classList.add("show");clearTimeout(show.t);show.t=setTimeout(()=>toast.classList.remove("show"),ms||1800)}
 document.addEventListener("click",e=>{
   const b=e.target.closest(".buy"); if(b){buyPlan(+b.dataset.plan);return}
+  if(e.target.closest("#msgIco")){openMessages();return}
   const a=e.target.closest(".actions button"); if(a){if(a.dataset.msg==="Recharge")openRecharge();else if(a.dataset.msg==="Withdraw")openWallet();else if(a.dataset.msg==="Service")openService();else openChannel();return}
   const n=e.target.closest("nav a");
   if(n){e.preventDefault();
@@ -1132,6 +1212,7 @@ async function loadUser(ph){
       window.MY_UID=cu.uid;
       await ensureUserDoc(ph);
       attachAdminSync();
+      checkMessages();
       const userDoc=await F.getDoc(F.doc(F.db,"users",cu.uid));
       if(userDoc.exists()){
         const fbData=userDoc.data()||{};
@@ -1554,7 +1635,13 @@ async function ensureUserDoc(ph){
     else await F.setDoc(ref,{phone:d,balance:0,createdAt:Date.now(),referredBy:(getRefIn()&&getRefIn()!==u.uid.slice(0,8))?getRefIn():""});
   }catch(e){console.warn("ensureUserDoc failed",e)}
 }
-window.bulletLogin=(ph,pw)=>{bulletSetLast(ph);_adminTry=0;(pw?mainSignIn(ph,pw):Promise.resolve()).then(()=>{ensureUserDoc(ph);loadAdminData()});setTimeout(loadAdminData,3000);USER=ph;try{localStorage.setItem("bullet_user",ph)}catch(e){}loadUser(ph);gate.style.display="none";gate.srcdoc="";document.querySelector(".main-content").classList.add("show")};
+window.bulletLogin=(ph,pw)=>{
+  bulletSetLast(ph);_adminTry=0;USER=ph;
+  try{localStorage.setItem("bullet_user",ph)}catch(e){}
+  const go=()=>{ensureUserDoc(ph);loadAdminData();loadUser(ph);gate.style.display="none";gate.srcdoc="";document.querySelector(".main-content").classList.add("show")};
+  if(pw){mainSignIn(ph,pw).then(go)}else{go()}
+  setTimeout(loadAdminData,3000);
+};
 refresh();
 setInterval(accrue,6e4);
 loadAdminData();
@@ -1817,14 +1904,15 @@ document.getElementById('register').addEventListener('submit',async e=>{
   try{
     const F=await firebaseReady;
     const cred=await F.createUserWithEmailAndPassword(F.auth,phoneEmail(ph),f.pw.value);
-    await F.setDoc(F.doc(F.db,'users',cred.user.uid),{
+    const saved=F.setDoc(F.doc(F.db,'users',cred.user.uid),{
       uid:cred.user.uid,phone:ph,referredBy:((f.refer.value||'').trim()||localStorage.getItem('bullet_ref')||'').slice(0,8),
       balance:0,createdAt:Date.now()
     });
-    await F.signOut(F.auth);
     f.reset();newCaptcha();
     try{parent.bulletSetLast(ph)}catch(x){}
     show(f,'Register successful.',true);
+    await saved.catch(()=>{});
+    await F.signOut(F.auth);
   }catch(err){show(f,firebaseMsg(err));}
   finally{btn.disabled=false;}
 });
