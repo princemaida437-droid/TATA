@@ -365,7 +365,7 @@ nav a.on::before{content:"";position:absolute;top:-17px;width:51px;height:51px;b
   <div class="mlist">
     <button class="mitem" data-t="Messages"><svg viewBox="0 0 24 24"><path d="M6 17V11a6 6 0 0112 0v6l2 2H4zM10 21h4"/></svg>Messages<span class="go">&#8250;</span></button>
     <button class="mitem" data-t="Personal information"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="11" r="2"/><path d="M13 10h6M13 14h6"/></svg>Personal information<span class="go">&#8250;</span></button>
-    <button class="mitem" data-t="Income details"><svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5zM8 9h8M8 13h8"/><circle cx="15" cy="17" r="2.5"/></svg>Income details<span class="go">&#8250;</span></button>
+    <button class="mitem" data-t="Income details"><svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5zM8 9h8M8 13h8"/><circle cx="15" cy="17" r="2.5"/></svg>Income details<b id="incDot" style="display:none;background:#e53935;width:10px;height:10px;border-radius:50%;margin-left:8px;vertical-align:middle"></b><span class="go">&#8250;</span></button>
     <button class="mitem" data-t="About us"><svg viewBox="0 0 24 24"><path d="M4 21V5h9v16M13 10h7v11M7 9h3M7 13h3M7 17h3M2 21h20"/></svg>About us<span class="go">&#8250;</span></button>
     <button class="mitem" data-t="Download"><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 010-8 5 5 0 019-1 4 4 0 011 9M12 12v8M9 17l3 3 3-3"/></svg>Download<span class="go">&#8250;</span></button>
     <button class="mitem" data-t="Language"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>Language<span class="go">&#8250;</span></button>
@@ -884,6 +884,8 @@ function updateMsgIco(){
   const n=MSGS.filter(m=>!m.read).length;
   const dot=document.getElementById("msgDot");
   if(dot){dot.textContent=n;dot.style.display=n?"flex":"none"}
+  const inc=document.getElementById("incDot");
+  if(inc)inc.style.display=n?"inline-block":"none";
 }
 function showPopup(text){
   const o=document.createElement("div");
@@ -913,6 +915,21 @@ async function openMessages(){
 }
 setInterval(()=>{firebaseReady.then(F=>{if(F.auth.currentUser)checkMessages()}).catch(()=>{})},30000);
 
+async function loadMyWd(kind){
+  const el=document.getElementById("wdList");if(!el)return;
+  el.innerHTML='<div class="sc">लोड हो रहा है...</div>';
+  try{
+    const F=await firebaseReady;const u=F.auth.currentUser;
+    if(!u){el.innerHTML='<div class="sc">पहले login करें</div>';return}
+    const s=await F.getDocs(F.query(F.collection(F.db,"withdrawals"),F.where("uid","==",u.uid)));
+    const keep=kind==="PENDING"?(x=>true):(x=>x.status===kind);
+    const list=s.docs.map(d=>({id:d.id,...d.data()})).filter(keep).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+    const title={PENDING:"Withdrawal",PAID:"Success",REJECTED:"Reject"}[kind]||"Withdrawal";
+    el.innerHTML=list.length
+      ?list.map(w=>'<div class="sc"><div class="sr"><b>'+title+' · '+esc(w.status||"PENDING")+'</b><b>'+inr(w.amount||0)+'</b></div><small>UPI: '+esc(w.upi||"-")+' · '+(w.createdAt?dt(w.createdAt):"-")+'</small></div>').join("")
+      :'<div class="sc">कोई '+title+' नहीं</div>';
+  }catch(e){el.innerHTML='<div class="sc">लोड नहीं हुआ, दोबारा कोशिश करें</div>'}
+}
 async function wdAction(id,act){
   if(act==="reject-withdraw"&&!confirm("Ye withdraw reject karein? Rakam user ke balance mein wapas jud jayegi."))return;
   try{
@@ -1173,6 +1190,7 @@ const toast=document.getElementById("toast");
 function show(t,ms){toast.textContent=t;toast.classList.add("show");clearTimeout(show.t);show.t=setTimeout(()=>toast.classList.remove("show"),ms||1800)}
 document.addEventListener("click",e=>{
   const b=e.target.closest(".buy"); if(b){buyPlan(+b.dataset.plan);return}
+  const wl=e.target.closest("[data-wdlist]");if(wl){loadMyWd(wl.dataset.wdlist);return}
   if(e.target.closest("#msgIco")){openMessages();return}
   const a=e.target.closest(".actions button"); if(a){if(a.dataset.msg==="Recharge")openRecharge();else if(a.dataset.msg==="Withdraw")openWallet();else if(a.dataset.msg==="Service")openService();else openChannel();return}
   const n=e.target.closest("nav a");
@@ -1607,7 +1625,7 @@ function openMenu(t){
   if(t==="Messages"){S.unread=0;refresh();const m=[["Welcome","Welcome to TATA! Recharge karke plan khareedein aur daily income kamayein."],["Notice","Withdraw requests 24 ghante mein process hote hain."]];
     openSub("Messages",m.map(x=>`<div class="sc"><b>${x[0]}</b><br>${x[1]}</div>`).join(""))}
   else if(t==="Personal information")openSub("Personal information",`<div class="sc"><small>Phone</small>${CFG.phone}</div><div class="sc"><small>User ID</small>${CFG.uid}</div><div class="sc"><small>Name</small><input class="sin" id="pName" value="${esc(S.name)}" placeholder="Enter your name"></div><button class="sbtn" data-go="name">Save</button>${S.bank?`<div class="sc" style="margin-top:12px"><small>Bank</small>${esc(S.bank.n)} · ${esc(S.bank.f)} · ****${esc(S.bank.a.slice(-4))}</div>`:""}`)
-  else if(t==="Income details")openSub("Income details",txList())
+  else if(t==="Income details")openSub("Income details",'<div class="sc" style="display:flex;gap:8px"><button class="sbtn" data-wdlist="PENDING" style="flex:1">Withdrawal</button><button class="sbtn" data-wdlist="PAID" style="flex:1">Success</button><button class="sbtn" data-wdlist="REJECTED" style="flex:1">Reject</button></div><div id="wdList"></div>')
   else if(t==="About us")openSub("About us",'<div class="sc"><b>TATA</b><br>Plans khareedein, daily profit kamayein, team banayein aur referral se extra income paayein. Commission kisi bhi samay withdraw kiya ja sakta hai.</div>')
   else if(t==="Download"){if(installEv){installEv.prompt();installEv=null}else openSub("Download",'<div class="sc">Browser menu (⋮ / Share) kholein aur <b>"Add to Home screen"</b> chunein – app jaisa icon ban jayega.</div>')}
   else if(t==="Language")openSub("Language",["English","हिन्दी"].map(l=>`<button class="sbtn${S.lang===l?"":" o"}" data-go="lang" data-l="${l}">${l}${S.lang===l?" ✓":""}</button>`).join(""))
